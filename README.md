@@ -119,3 +119,7 @@ Bamboo/
 - Set `DATABASE_URL` to PostgreSQL for production
 - Deploy backend (Railway, Fly.io, etc.) and set `NEXT_PUBLIC_API_URL` to its public URL
 - CORS: set `CORS_ORIGINS` to your frontend domain
+
+### Railway
+
+This is a monorepo — set **Root Directory** to `backend` or `frontend` per service. See **[DEPLOY.md](./DEPLOY.md)** for step-by-step Railway setup.

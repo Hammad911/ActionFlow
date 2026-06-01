@@ -1,0 +1,9 @@
+# Use when Railway "Root Directory" = frontend
+
+[build]
+builder = "RAILPACK"
+buildCommand = "npm ci && npm run build"
+
+[deploy]
+startCommand = "npm start"
+restartPolicyType = "ON_FAILURE"
