@@ -265,6 +265,12 @@ export default function Home() {
               </div>
             )}
 
+            {error && !runId && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800 no-print">
+                <strong>Error:</strong> {error}
+              </div>
+            )}
+
             {(loading || runId) && (
               <section className="bg-white border border-gray-200 rounded-lg p-6 no-print">
                 <ProcessingStepper

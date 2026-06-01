@@ -1,4 +1,5 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+console.log("[ActionFlow] API_URL =", API_URL);
 
 export interface RunSummary {
   id: string;

@@ -6,7 +6,7 @@ from typing import Optional
 from dotenv import load_dotenv
 
 # Load backend/.env before any module reads os.environ
-load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
