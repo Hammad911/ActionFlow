@@ -1,60 +1,166 @@
 # Deploying ActionFlow on Railway
 
-This repo is a **monorepo** (`backend/` + `frontend/`). Railway must know which folder to build.
+Two services from one repo: **backend** (API) + **frontend** (Next.js), plus **PostgreSQL**.
 
-## Recommended: two Railway services
+```
+┌─────────────┐     NEXT_PUBLIC_API_URL      ┌─────────────┐
+│  Frontend   │ ───────────────────────────► │   Backend   │
+│  (Next.js)  │                              │  (FastAPI)  │
+└─────────────┘                              └──────┬──────┘
+       ▲                                            │
+       │         CORS_ORIGINS = frontend URL          │ DATABASE_URL
+       └────────────────────────────────────────────┤
+                                                    ▼
+                                            ┌─────────────┐
+                                            │  PostgreSQL  │
+                                            │  (Railway)   │
+                                            └─────────────┘
+```
 
-### 1. Backend (FastAPI)
+---
 
-1. New Project → Deploy from GitHub → `Hammad911/ActionFlow`
+## Step 1 — Create the Railway project
+
+1. [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub** → `Hammad911/ActionFlow`
+
+---
+
+## Step 2 — PostgreSQL database
+
+1. In the project, click **+ New** → **Database** → **PostgreSQL**
+2. Railway creates a Postgres service (often named **Postgres**)
+3. Open the Postgres service → **Connect** → copy **Postgres Connection URL** if you need it manually  
+   (usually you will reference it automatically — see below)
+
+**Do not use SQLite on Railway** — the filesystem is ephemeral; data would disappear on redeploy.
+
+---
+
+## Step 3 — Backend service
+
+1. **+ New** → **GitHub Repo** → same `ActionFlow` repo (or use existing service)
 2. **Settings → Root Directory** → `backend`
-3. **Variables** (Settings → Variables):
+3. **Settings → Networking** → **Generate Domain** (e.g. `actionflow-api-production.up.railway.app`)  
+   Copy this URL — you need it for the frontend.
 
-   | Variable | Value |
-   |----------|--------|
-   | `GOOGLE_API_KEY` | Your key from [AI Studio](https://aistudio.google.com/apikey) |
-   | `GEMINI_MODEL` | `gemini-2.5-flash` |
-   | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` or `sqlite:///./actionflow.db` |
-   | `CORS_ORIGINS` | Your frontend URL, e.g. `https://your-frontend.up.railway.app` |
+### Backend variables
 
-4. Deploy. Health check: `https://<backend-url>/api/health`
+Open the **backend** service → **Variables**:
 
-### 2. Frontend (Next.js)
+| Variable | What to put |
+|----------|-------------|
+| `GOOGLE_API_KEY` | Your key from [Google AI Studio](https://aistudio.google.com/apikey) |
+| `GEMINI_MODEL` | `gemini-2.5-flash` |
+| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` — see note below |
+| `CORS_ORIGINS` | Your **frontend** public URL — see Step 4 first if needed |
 
-1. **Add Service** → same repo
-2. **Root Directory** → `frontend`
-3. **Variables**:
+#### `DATABASE_URL` (SQL link)
 
-   | Variable | Value |
-   |----------|--------|
-   | `NEXT_PUBLIC_API_URL` | Backend public URL (no trailing slash) |
+**Recommended** — reference the Postgres plugin (service name must match):
 
-4. Deploy.
+```text
+${{Postgres.DATABASE_URL}}
+```
+
+If your database service has a different name (e.g. `PostgreSQL`), use:
+
+```text
+${{PostgreSQL.DATABASE_URL}}
+```
+
+To find the exact name: Postgres service → **Variables** tab → see how Railway labels `DATABASE_URL`, or use **Add Reference** in the backend service variables UI and pick the Postgres service.
+
+**Alternative** — paste the full URL from Postgres → **Connect**:
+
+```text
+postgresql://postgres:password@containers-us-west-xxx.railway.app:5432/railway
+```
+
+(Railway may show `postgres://` — the app converts that automatically.)
+
+#### `CORS_ORIGINS`
+
+The **public HTTPS URL of your frontend** (no trailing slash).
+
+Examples:
+
+```text
+https://actionflow-frontend-production.up.railway.app
+```
+
+Multiple origins (preview + prod):
+
+```text
+https://actionflow-frontend-production.up.railway.app,http://localhost:3000
+```
+
+Deploy the frontend first if you do not have this URL yet, then come back and set `CORS_ORIGINS`, then redeploy the backend.
+
+4. **Deploy** → test: `https://<your-backend-domain>/api/health`  
+   Should return `"google_api_key_configured": true` if the key is set.
 
 ---
 
-## Single service from repo root
+## Step 4 — Frontend service
 
-If you only deploy the API from the repo root, the root `railway.toml` runs:
+1. **+ New** → **GitHub Repo** → same repo
+2. **Settings → Root Directory** → `frontend`
+3. **Settings → Networking** → **Generate Domain** (e.g. `actionflow-frontend-production.up.railway.app`)
 
-- Build: `pip install -r backend/requirements.txt`
-- Start: `cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT`
+### Frontend variables
 
-Set the same backend variables as above.
+| Variable | What to put |
+|----------|-------------|
+| `NEXT_PUBLIC_API_URL` | Your **backend** public URL, **no trailing slash** |
+
+Example:
+
+```text
+https://actionflow-api-production.up.railway.app
+```
+
+4. **Deploy**
 
 ---
 
-## Fix: "Railpack could not determine how to build the app"
+## Step 5 — Wire CORS (after both URLs exist)
 
-This happens when **Root Directory is empty** (repo root has no `requirements.txt`).
+1. Copy the **frontend** domain from Step 4
+2. Backend service → **Variables** → set:
 
-**Fix:** Set **Root Directory** to `backend` or `frontend` for each service.
+   ```text
+   CORS_ORIGINS=https://actionflow-frontend-production.up.railway.app
+   ```
+
+3. Redeploy the **backend** service
 
 ---
 
-## Easier frontend hosting
+## Quick reference
 
-You can host the frontend on [Vercel](https://vercel.com) instead:
+| You have… | Use for… |
+|-----------|----------|
+| Postgres → `DATABASE_URL` | Backend `DATABASE_URL` = `${{Postgres.DATABASE_URL}}` |
+| Backend public URL | Frontend `NEXT_PUBLIC_API_URL` |
+| Frontend public URL | Backend `CORS_ORIGINS` |
 
-- Root Directory: `frontend`
-- Env: `NEXT_PUBLIC_API_URL=https://your-railway-backend.up.railway.app`
+---
+
+## Local vs production
+
+| | Local | Railway |
+|---|--------|---------|
+| Database | `sqlite:///./actionflow.db` | `${{Postgres.DATABASE_URL}}` |
+| API URL (frontend) | `http://localhost:8000` | `https://<backend>.up.railway.app` |
+| CORS | `http://localhost:3000` | `https://<frontend>.up.railway.app` |
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| CORS error in browser | `CORS_ORIGINS` must exactly match frontend URL (https, no trailing `/`) |
+| Frontend can't reach API | `NEXT_PUBLIC_API_URL` must be backend URL; redeploy frontend after changing |
+| DB connection failed | Add `psycopg2-binary` (in requirements.txt); use `postgresql://` URL |
+| Build fails at repo root | Set **Root Directory** to `backend` or `frontend` |
