@@ -1,0 +1,31 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+frontend/.env.local
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.Python
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# SQLite (local data)
+*.db
+*.db-journal
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Cursor assets (optional local images)
+.cursor/
