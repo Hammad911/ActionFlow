@@ -24,6 +24,15 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title="ActionFlow API", version="1.0.0")
 
 origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+# Always include the Railway frontend URL
+_railway_origins = [
+    "https://action-flow.up.railway.app",
+    "http://localhost:3000",
+]
+for o in _railway_origins:
+    if o not in origins:
+        origins.append(o)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -52,7 +61,11 @@ class RunSummary(BaseModel):
 @app.get("/api/health")
 def health():
     key_set = bool(os.getenv("GOOGLE_API_KEY", "").strip())
-    return {"status": "ok", "google_api_key_configured": key_set}
+    return {
+        "status": "ok",
+        "google_api_key_configured": key_set,
+        "cors_origins": origins,
+    }
 
 
 @app.post("/api/process")
