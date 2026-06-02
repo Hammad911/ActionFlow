@@ -1,6 +1,27 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 console.log("[ActionFlow] API_URL =", API_URL);
 
+// ── User API key (stored in memory only, never persisted to server) ──
+let _userApiKey: string | null = null;
+
+export function setUserApiKey(key: string | null) {
+  _userApiKey = key && key.trim() ? key.trim() : null;
+}
+
+export function getUserApiKey(): string | null {
+  return _userApiKey;
+}
+
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = { ...extra };
+  if (_userApiKey) {
+    headers["X-Api-Key"] = _userApiKey;
+  }
+  return headers;
+}
+
+// ── Types ──
+
 export interface RunSummary {
   id: string;
   title: string;
@@ -58,10 +79,12 @@ export interface RunDetail {
   created_at: string;
 }
 
+// ── API functions ──
+
 export async function startProcess(transcript: string): Promise<{ run_id: string; warning?: string }> {
   const res = await fetch(`${API_URL}/api/process`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ transcript }),
   });
   if (!res.ok) {
@@ -74,7 +97,11 @@ export async function startProcess(transcript: string): Promise<{ run_id: string
 export async function uploadFile(file: File): Promise<{ run_id: string; warning?: string; transcript: string }> {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${API_URL}/api/upload`, { method: "POST", body: form });
+  const res = await fetch(`${API_URL}/api/upload`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: form,
+  });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || "Upload failed");
@@ -83,13 +110,17 @@ export async function uploadFile(file: File): Promise<{ run_id: string; warning?
 }
 
 export async function listRuns(page = 1): Promise<{ runs: RunSummary[]; total: number }> {
-  const res = await fetch(`${API_URL}/api/runs?page=${page}`);
+  const res = await fetch(`${API_URL}/api/runs?page=${page}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error("Failed to load runs");
   return res.json();
 }
 
 export async function getRun(runId: string): Promise<RunDetail> {
-  const res = await fetch(`${API_URL}/api/runs/${runId}`);
+  const res = await fetch(`${API_URL}/api/runs/${runId}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error("Run not found");
   return res.json();
 }
@@ -112,7 +143,7 @@ export function subscribeToStream(
     try {
       const res = await fetch(url, {
         method: path === "resolve" ? "POST" : "GET",
-        headers: path === "resolve" ? { "Content-Type": "application/json" } : {},
+        headers: authHeaders(path === "resolve" ? { "Content-Type": "application/json" } : {}),
         body: path === "resolve" ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
@@ -155,7 +186,10 @@ export function subscribeToStream(
 
 export async function retryStep(runId: string, step: number, onEvent: (data: Record<string, unknown>) => void) {
   const url = `${API_URL}/api/runs/${runId}/retry?step=${step}`;
-  const res = await fetch(url, { method: "POST" });
+  const res = await fetch(url, {
+    method: "POST",
+    headers: authHeaders(),
+  });
   if (!res.ok || !res.body) throw new Error("Retry failed");
 
   const reader = res.body.getReader();

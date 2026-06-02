@@ -3,6 +3,7 @@ import os
 import re
 import asyncio
 from functools import partial
+from typing import Optional
 
 import google.generativeai as genai
 from google.api_core import exceptions as google_exceptions
@@ -16,15 +17,15 @@ OUTPUT_MAX_TOKENS = 2048
 STEP_TIMEOUT = 60
 
 
-def _configure():
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
+def _configure(api_key: Optional[str] = None):
+    key = api_key or os.getenv("GOOGLE_API_KEY")
+    if not key:
         raise ValueError("GOOGLE_API_KEY environment variable is not set")
-    genai.configure(api_key=api_key)
+    genai.configure(api_key=key)
 
 
-def _build_model(temperature: float, max_tokens: int):
-    _configure()
+def _build_model(temperature: float, max_tokens: int, api_key: Optional[str] = None):
+    _configure(api_key)
     return genai.GenerativeModel(
         MODEL_NAME,
         system_instruction=prompts.SYSTEM_ANALYST,
@@ -53,7 +54,7 @@ def _friendly_api_error(exc: Exception) -> str:
 
     if isinstance(exc, google_exceptions.InvalidArgument):
         if "api key" in str(exc).lower():
-            return "Invalid GOOGLE_API_KEY. Create one at https://aistudio.google.com/apikey (starts with AIza…)."
+            return "Invalid API key. Create one at https://aistudio.google.com/apikey (starts with AIza…)."
         return str(exc)
 
     if isinstance(exc, google_exceptions.NotFound) and "model" in str(exc).lower():
@@ -113,22 +114,22 @@ def parse_json_response(text: str) -> dict:
     return json.loads(cleaned)
 
 
-async def step1_cleanup(transcript: str) -> str:
-    model = _build_model(temperature=0, max_tokens=EXTRACTION_MAX_TOKENS)
+async def step1_cleanup(transcript: str, api_key: Optional[str] = None) -> str:
+    model = _build_model(temperature=0, max_tokens=EXTRACTION_MAX_TOKENS, api_key=api_key)
     prompt = prompts.STEP1_CLEANUP.format(transcript=transcript)
     return await _generate_async(model, prompt)
 
 
-async def step2_extract(cleaned: str, retry: bool = False) -> dict:
-    model = _build_model(temperature=0, max_tokens=EXTRACTION_MAX_TOKENS)
+async def step2_extract(cleaned: str, retry: bool = False, api_key: Optional[str] = None) -> dict:
+    model = _build_model(temperature=0, max_tokens=EXTRACTION_MAX_TOKENS, api_key=api_key)
     template = prompts.STEP2_RETRY if retry else prompts.STEP2_EXTRACTION
     prompt = template.format(cleaned_transcript=cleaned)
     raw = await _generate_async(model, prompt)
     return parse_json_response(raw)
 
 
-async def step3_clarifying(extraction: dict) -> list:
-    model = _build_model(temperature=0, max_tokens=EXTRACTION_MAX_TOKENS)
+async def step3_clarifying(extraction: dict, api_key: Optional[str] = None) -> list:
+    model = _build_model(temperature=0, max_tokens=EXTRACTION_MAX_TOKENS, api_key=api_key)
     prompt = prompts.STEP3_CLARIFYING.format(
         extraction_json=json.dumps(extraction, indent=2)
     )
@@ -137,13 +138,13 @@ async def step3_clarifying(extraction: dict) -> list:
     return data.get("clarifying_questions", [])
 
 
-async def step4_slack(context: str) -> str:
-    model = _build_model(temperature=0.3, max_tokens=OUTPUT_MAX_TOKENS)
+async def step4_slack(context: str, api_key: Optional[str] = None) -> str:
+    model = _build_model(temperature=0.3, max_tokens=OUTPUT_MAX_TOKENS, api_key=api_key)
     prompt = prompts.STEP4_SLACK.format(context=context)
     return await _generate_async(model, prompt)
 
 
-async def step4_email(context: str) -> str:
-    model = _build_model(temperature=0.3, max_tokens=OUTPUT_MAX_TOKENS)
+async def step4_email(context: str, api_key: Optional[str] = None) -> str:
+    model = _build_model(temperature=0.3, max_tokens=OUTPUT_MAX_TOKENS, api_key=api_key)
     prompt = prompts.STEP4_EMAIL.format(context=context)
     return await _generate_async(model, prompt)

@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 # Load backend/.env before any module reads os.environ
 load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -40,6 +40,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _get_user_api_key(x_api_key: Optional[str] = Header(None)) -> Optional[str]:
+    """Extract user-provided API key from X-Api-Key header. Returns None to use server default."""
+    if x_api_key and x_api_key.strip():
+        return x_api_key.strip()
+    return None
 
 
 class ProcessRequest(BaseModel):
@@ -107,20 +114,29 @@ async def upload_transcript(file: UploadFile = File(...), db: Session = Depends(
 
 
 @app.get("/api/runs/{run_id}/stream")
-async def stream_run(run_id: str, db: Session = Depends(get_db)):
+async def stream_run(
+    run_id: str,
+    db: Session = Depends(get_db),
+    user_key: Optional[str] = Depends(_get_user_api_key),
+):
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(404, "Run not found")
 
     async def event_generator():
-        async for event in run_pipeline(db, run_id, start_from_step=1):
+        async for event in run_pipeline(db, run_id, start_from_step=1, api_key=user_key):
             yield {"event": event.get("type", "message"), "data": json.dumps(event)}
 
     return EventSourceResponse(event_generator())
 
 
 @app.post("/api/runs/{run_id}/resolve")
-async def resolve_run(run_id: str, req: ResolveRequest, db: Session = Depends(get_db)):
+async def resolve_run(
+    run_id: str,
+    req: ResolveRequest,
+    db: Session = Depends(get_db),
+    user_key: Optional[str] = Depends(_get_user_api_key),
+):
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(404, "Run not found")
@@ -132,7 +148,7 @@ async def resolve_run(run_id: str, req: ResolveRequest, db: Session = Depends(ge
     db.commit()
 
     async def event_generator():
-        async for event in run_step4_only(db, run_id):
+        async for event in run_step4_only(db, run_id, api_key=user_key):
             yield {"event": event.get("type", "message"), "data": json.dumps(event)}
 
     return EventSourceResponse(event_generator())
@@ -191,13 +207,18 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
 
 
 @app.post("/api/runs/{run_id}/retry")
-async def retry_step(run_id: str, step: int = 1, db: Session = Depends(get_db)):
+async def retry_step(
+    run_id: str,
+    step: int = 1,
+    db: Session = Depends(get_db),
+    user_key: Optional[str] = Depends(_get_user_api_key),
+):
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(404, "Run not found")
 
     async def event_generator():
-        async for event in run_pipeline(db, run_id, start_from_step=step):
+        async for event in run_pipeline(db, run_id, start_from_step=step, api_key=user_key):
             yield {"event": event.get("type", "message"), "data": json.dumps(event)}
 
     return EventSourceResponse(event_generator())

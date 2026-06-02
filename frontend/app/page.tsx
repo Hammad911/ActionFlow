@@ -6,6 +6,7 @@ import ProcessingStepper from "@/components/ProcessingStepper";
 import EscalationPanel from "@/components/EscalationPanel";
 import OutputTabs from "@/components/OutputTabs";
 import RunHistory from "@/components/RunHistory";
+import ApiKeyInput from "@/components/ApiKeyInput";
 import {
   startProcess,
   uploadFile,
@@ -228,11 +229,14 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       <header className="border-b border-gray-200 bg-white no-print">
-        <div className="max-w-6xl mx-auto px-4 py-5">
-          <h1 className="text-2xl font-bold text-gray-900">ActionFlow</h1>
-          <p className="text-sm text-gray-600 mt-1">
-            Turn meeting transcripts into action items, decisions, and ready-to-send updates
-          </p>
+        <div className="max-w-6xl mx-auto px-4 py-5 flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">ActionFlow</h1>
+            <p className="text-sm text-gray-600 mt-1">
+              Turn meeting transcripts into action items, decisions, and ready-to-send updates
+            </p>
+          </div>
+          <ApiKeyInput showPrompt={rateLimitCountdown > 0} />
         </div>
       </header>
 
@@ -246,7 +250,7 @@ export default function Home() {
           />
 
           <div className="flex-1 min-w-0 space-y-8">
-            {!runId || needsReview || !extraction ? (
+            {!runId || needsReview || !extraction ? (<>
               <section className="bg-white border border-gray-200 rounded-lg p-6 no-print">
                 <TranscriptInput
                   value={transcript}
@@ -257,7 +261,23 @@ export default function Home() {
                   warning={warning}
                 />
               </section>
-            ) : null}
+
+              <div className="flex items-start gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 no-print">
+                <span className="text-base mt-0.5">ℹ️</span>
+                <p>
+                  This app uses a shared API key with limited quota — you may hit rate limits during peak usage.
+                  To avoid interruptions, click <strong>&quot;🔑 Bring Your Own API Key&quot;</strong> above and add your free key from{" "}
+                  <a
+                    href="https://aistudio.google.com/apikey"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline font-medium hover:text-blue-900"
+                  >
+                    Google AI Studio
+                  </a>.
+                </p>
+              </div>
+            </>) : null}
 
             {rateLimitCountdown > 0 && (
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 no-print">

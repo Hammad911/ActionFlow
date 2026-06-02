@@ -48,6 +48,7 @@ async def run_pipeline(
     db: Session,
     run_id: str,
     start_from_step: int = 1,
+    api_key: Optional[str] = None,
 ) -> AsyncGenerator[dict, None]:
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
@@ -61,7 +62,7 @@ async def run_pipeline(
             db.commit()
             yield {"type": "step_start", "step": 1, "label": STEPS[0]}
             try:
-                cleaned = await gemini_client.step1_cleanup(run.transcript_raw)
+                cleaned = await gemini_client.step1_cleanup(run.transcript_raw, api_key=api_key)
                 run.cleaned_transcript = cleaned
                 run.current_step = 1
                 db.commit()
@@ -95,10 +96,10 @@ async def run_pipeline(
             extraction = None
             raw_fallback = None
             try:
-                extraction = await gemini_client.step2_extract(run.cleaned_transcript)
+                extraction = await gemini_client.step2_extract(run.cleaned_transcript, api_key=api_key)
             except (json.JSONDecodeError, ValueError):
                 try:
-                    raw = await gemini_client.step2_extract(run.cleaned_transcript, retry=True)
+                    raw = await gemini_client.step2_extract(run.cleaned_transcript, retry=True, api_key=api_key)
                     extraction = raw
                 except Exception as e:
                     run.status = "failed"
@@ -156,7 +157,7 @@ async def run_pipeline(
             if needs_escalation(extraction):
                 run.status = "needs_review"
                 try:
-                    questions = await gemini_client.step3_clarifying(extraction)
+                    questions = await gemini_client.step3_clarifying(extraction, api_key=api_key)
                     run.set_clarifying(questions)
                 except Exception as e:
                     questions = _fallback_clarifying(extraction)
@@ -175,7 +176,7 @@ async def run_pipeline(
                 yield {"type": "step_complete", "step": 3, "label": STEPS[2], "skipped": True}
 
         if start_from_step <= 4:
-            async for event in _run_step4(db, run):
+            async for event in _run_step4(db, run, api_key=api_key):
                 yield event
 
     except Exception as e:
@@ -207,7 +208,7 @@ def _fallback_clarifying(extraction: dict) -> list:
     return questions
 
 
-async def _run_step4(db: Session, run: Run) -> AsyncGenerator[dict, None]:
+async def _run_step4(db: Session, run: Run, api_key: Optional[str] = None) -> AsyncGenerator[dict, None]:
     run.current_step = 4
     run.status = "processing"
     db.commit()
@@ -215,8 +216,8 @@ async def _run_step4(db: Session, run: Run) -> AsyncGenerator[dict, None]:
 
     context = build_output_context(run)
     try:
-        slack = await gemini_client.step4_slack(context)
-        email = await gemini_client.step4_email(context)
+        slack = await gemini_client.step4_slack(context, api_key=api_key)
+        email = await gemini_client.step4_email(context, api_key=api_key)
         run.slack_output = slack
         run.email_output = email
         run.status = "completed"
@@ -250,12 +251,12 @@ async def _run_step4(db: Session, run: Run) -> AsyncGenerator[dict, None]:
         yield {"type": "timeout", "step": 4, "message": str(e)}
 
 
-async def run_step4_only(db: Session, run_id: str) -> AsyncGenerator[dict, None]:
+async def run_step4_only(db: Session, run_id: str, api_key: Optional[str] = None) -> AsyncGenerator[dict, None]:
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         yield {"type": "error", "message": "Run not found"}
         return
-    async for event in _run_step4(db, run):
+    async for event in _run_step4(db, run, api_key=api_key):
         yield event
 
 
